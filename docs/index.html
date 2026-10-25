@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>国内 ETF / 基金 低位网格监控</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+<style>
+:root {
+    --bg-primary: #f4f6f9;
+    --bg-card: #ffffff;
+    --bg-header: #101a2e;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-on-dark: #ffffff;
+    --positive: #dc3545;
+    --negative: #198754;
+    --gap: 16px;
+    --radius: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+.dashboard-container { max-width: 1440px; margin: 0 auto; padding: var(--gap); }
+.dashboard-header {
+    background: var(--bg-header); color: var(--text-on-dark);
+    padding: 18px 22px; border-radius: var(--radius); margin-bottom: var(--gap);
+    display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 14px;
+}
+.dashboard-header h1 { font-size: 20px; font-weight: 600; }
+.dashboard-header .sub { font-size: 12px; color: rgba(255,255,255,0.65); margin-top: 4px; }
+.filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.filter-group { display: flex; align-items: center; gap: 6px; font-size: 12px; color: rgba(255,255,255,0.7); }
+.filter-group select, .filter-group input[type="search"] {
+    padding: 6px 10px; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;
+    background: rgba(255,255,255,0.1); color: var(--text-on-dark); font-size: 13px;
+}
+.filter-group input[type="search"] { width: 160px; }
+.filter-group select option { background: var(--bg-header); color: var(--text-on-dark); }
+.filter-group input[type="checkbox"] { accent-color: #4dabf7; }
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--gap); margin-bottom: var(--gap); }
+.kpi-card {
+    background: var(--bg-card); border-radius: var(--radius); padding: 16px 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.kpi-label { font-size: 12px; color: var(--text-secondary); letter-spacing: .5px; margin-bottom: 6px; }
+.kpi-value { font-size: 26px; font-weight: 700; }
+.kpi-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--gap); margin-bottom: var(--gap); }
+.chart-container { background: var(--bg-card); border-radius: var(--radius); padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.chart-container h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+.chart-box { position: relative; height: 280px; }
+.table-section { background: var(--bg-card); border-radius: var(--radius); padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
+.table-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.table-head h3 { font-size: 14px; font-weight: 600; }
+.table-head span { font-size: 12px; color: var(--text-secondary); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table thead th {
+    text-align: left; padding: 9px 10px; border-bottom: 2px solid #dee2e6;
+    color: var(--text-secondary); font-weight: 600; font-size: 12px;
+    white-space: nowrap; cursor: pointer; user-select: none;
+}
+.data-table thead th:hover { color: var(--text-primary); background: #f8f9fa; }
+.data-table tbody td { padding: 8px 10px; border-bottom: 1px solid #f1f3f5; white-space: nowrap; }
+.data-table tbody tr:hover { background: #f8f9fa; }
+.pos { color: var(--positive); }
+.neg { color: var(--negative); }
+.sig { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; color: #fff; }
+.muted { color: var(--text-secondary); }
+.dashboard-footer { margin-top: var(--gap); font-size: 12px; color: var(--text-secondary); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 768px) {
+    .dashboard-header { flex-direction: column; align-items: flex-start; }
+    .chart-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="dashboard-container">
+    <header class="dashboard-header">
+        <div>
+            <h1>国内 ETF / 基金 低位网格监控</h1>
+            <div class="sub">数据源：天天基金（近一年净值区间） | 更新于 2026-10-25 14:49:13</div>
+        </div>
+        <div class="filters">
+            <div class="filter-group">
+                <label for="f-cat">分类</label>
+                <select id="f-cat"><option value="all">全部</option></select>
+            </div>
+            <div class="filter-group">
+                <label for="f-signal">信号</label>
+                <select id="f-signal"><option value="all">全部</option></select>
+            </div>
+            <div class="filter-group">
+                <input type="search" id="f-q" placeholder="搜索名称 / 代码">
+            </div>
+            <div class="filter-group">
+                <label for="f-buy"><input type="checkbox" id="f-buy"> 只看可关注（分位 &lt; 60%）</label>
+            </div>
+        </div>
+    </header>
+
+    <section class="kpi-row" id="kpi-row"></section>
+
+    <section class="chart-row">
+        <div class="chart-container">
+            <h3>信号分布</h3>
+            <div class="chart-box"><canvas id="chart-signal"></canvas></div>
+        </div>
+        <div class="chart-container">
+            <h3>距一年高点跌幅 TOP 12（跌得越多越便宜）</h3>
+            <div class="chart-box"><canvas id="chart-top"></canvas></div>
+        </div>
+        <div class="chart-container">
+            <h3>线性分位 × 距低点</h3>
+            <div class="chart-box"><canvas id="chart-scatter"></canvas></div>
+        </div>
+    </section>
+
+    <section class="table-section">
+        <div class="table-head">
+            <h3>标的一览（点击表头排序）</h3>
+            <span id="row-count"></span>
+        </div>
+        <div id="table-container"></div>
+    </section>
+
+    <footer class="dashboard-footer">
+        <span>生成时间：2026-10-25 14:49:13</span>
+        <span>线性分位 = 当前净值在近一年高/低区间中的相对位置，越低越接近底部；触发买入价为下一档网格线价格。仅供参考，不构成投资建议。</span>
+    </footer>
+</div>
+
+<script>
+const DATA = [{"code": "sh510300", "name": "沪深300ETF-华泰柏瑞", "cat": "宽基指数", "nav": 4.1811, "lin": 7.3, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -13.4, "from_low": 1.75, "low": 4.1093, "high": 5.0878, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 4.305, "plan": {"20%": 4.305, "40%": 4.5007, "60%": 4.6964, "80%": 4.8921}}, {"code": "sh510050", "name": "上证50ETF-华夏", "cat": "宽基指数", "nav": 2.8753, "lin": 9.4, "rank": 1.7, "signal": "🟢🟢 极度低估", "ret1y": -10.61, "from_low": 1.32, "low": 2.8379, "high": 3.2354, "low_date": "2026-10-21", "high_date": "2026-01-05", "days": 241, "trigger": 2.9174, "plan": {"20%": 2.9174, "40%": 2.9969, "60%": 3.0764, "80%": 3.1559}}, {"code": "sh510500", "name": "中证500ETF-南方", "cat": "宽基指数", "nav": 6.8526, "lin": 6.3, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -8.44, "from_low": 2.35, "low": 6.6952, "high": 9.1808, "low_date": "2026-10-21", "high_date": "2026-06-29", "days": 241, "trigger": 7.1923, "plan": {"20%": 7.1923, "40%": 7.6894, "60%": 8.1866, "80%": 8.6837}}, {"code": "sh512100", "name": "中证1000ETF-南方", "cat": "宽基指数", "nav": 2.7389, "lin": 6.7, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -9.69, "from_low": 2.3, "low": 2.6773, "high": 3.5975, "low_date": "2026-10-21", "high_date": "2026-05-12", "days": 241, "trigger": 2.8613, "plan": {"20%": 2.8613, "40%": 3.0454, "60%": 3.2294, "80%": 3.4135}}, {"code": "sz159915", "name": "创业板ETF-易方达", "cat": "宽基指数", "nav": 2.7018, "lin": 6.0, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -15.86, "from_low": 4.16, "low": 2.5939, "high": 4.3879, "low_date": "2026-10-21", "high_date": "2026-06-24", "days": 241, "trigger": 2.9527, "plan": {"20%": 2.9527, "40%": 3.3115, "60%": 3.6703, "80%": 4.0291}}, {"code": "sh588000", "name": "科创50ETF-华夏", "cat": "宽基指数", "nav": 1.4215, "lin": 9.8, "rank": 19.9, "signal": "🟢🟢 极度低估", "ret1y": -8.78, "from_low": 7.4, "low": 1.3235, "high": 2.3272, "low_date": "2026-04-02", "high_date": "2026-06-29", "days": 241, "trigger": 1.5242, "plan": {"20%": 1.5242, "40%": 1.725, "60%": 1.9257, "80%": 2.1265}}, {"code": "sh588080", "name": "科创板50ETF-易方达", "cat": "宽基指数", "nav": 1.3794, "lin": 9.9, "rank": 20.7, "signal": "🟢🟢 极度低估", "ret1y": -8.61, "from_low": 7.51, "low": 1.2831, "high": 2.2567, "low_date": "2026-03-30", "high_date": "2026-06-29", "days": 241, "trigger": 1.4778, "plan": {"20%": 1.4778, "40%": 1.6725, "60%": 1.8673, "80%": 2.062}}, {"code": "sh588030", "name": "科创100ETF-博时", "cat": "宽基指数", "nav": 1.4681, "lin": 23.5, "rank": 29.0, "signal": "🟢 低估", "ret1y": 7.8, "from_low": 19.23, "low": 1.2313, "high": 2.2387, "low_date": "2025-11-20", "high_date": "2026-06-29", "days": 241, "trigger": 1.6343, "plan": {"20%": 1.4328, "40%": 1.6343, "60%": 1.8357, "80%": 2.0372}}, {"code": "sh588900", "name": "科创100ETF南方", "cat": "宽基指数", "nav": 1.51, "lin": 25.8, "rank": 32.8, "signal": "🟢 低估", "ret1y": 9.89, "from_low": 21.61, "low": 1.2417, "high": 2.2803, "low_date": "2025-11-20", "high_date": "2026-06-29", "days": 241, "trigger": 1.6571, "plan": {"20%": 1.4494, "40%": 1.6571, "60%": 1.8649, "80%": 2.0726}}, {"code": "sh588230", "name": "科创200ETF-华泰柏瑞", "cat": "宽基指数", "nav": 1.5414, "lin": 21.7, "rank": 22.8, "signal": "🟢 低估", "ret1y": 4.37, "from_low": 16.43, "low": 1.3239, "high": 2.3256, "low_date": "2025-11-20", "high_date": "2026-06-30", "days": 241, "trigger": 1.7246, "plan": {"20%": 1.5242, "40%": 1.7246, "60%": 1.9249, "80%": 2.1253}}, {"code": "sh588270", "name": "科创200ETF易方达", "cat": "宽基指数", "nav": 1.4482, "lin": 23.4, "rank": 23.2, "signal": "🟢 低估", "ret1y": 5.54, "from_low": 18.19, "low": 1.2253, "high": 2.1768, "low_date": "2025-11-20", "high_date": "2026-06-30", "days": 241, "trigger": 1.6059, "plan": {"20%": 1.4156, "40%": 1.6059, "60%": 1.7962, "80%": 1.9865}}, {"code": "sh589220", "name": "科创200ETF国泰", "cat": "宽基指数", "nav": 0.8692, "lin": 6.7, "rank": 3.9, "signal": "🟢🟢 极度低估", "ret1y": -13.09, "from_low": 3.82, "low": 0.8372, "high": 1.3134, "low_date": "2026-10-21", "high_date": "2026-06-30", "days": 180, "trigger": 0.9324, "plan": {"20%": 0.9324, "40%": 1.0277, "60%": 1.1229, "80%": 1.2182}}, {"code": "sz159919", "name": "沪深300ETF-嘉实", "cat": "宽基指数", "nav": 4.3652, "lin": 7.5, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -12.35, "from_low": 1.78, "low": 4.289, "high": 5.3058, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 4.4924, "plan": {"20%": 4.4924, "40%": 4.6957, "60%": 4.8991, "80%": 5.1024}}, {"code": "sz159922", "name": "中证500ETF-嘉实", "cat": "宽基指数", "nav": 2.777, "lin": 6.9, "rank": 2.5, "signal": "🟢🟢 极度低估", "ret1y": -7.08, "from_low": 2.38, "low": 2.7124, "high": 3.6532, "low_date": "2026-10-21", "high_date": "2026-06-29", "days": 241, "trigger": 2.9006, "plan": {"20%": 2.9006, "40%": 3.0887, "60%": 3.2769, "80%": 3.465}}, {"code": "sz159845", "name": "中证1000ETF-华夏", "cat": "宽基指数", "nav": 2.8095, "lin": 6.7, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -8.99, "from_low": 2.33, "low": 2.7456, "high": 3.6995, "low_date": "2026-10-21", "high_date": "2026-05-12", "days": 241, "trigger": 2.9364, "plan": {"20%": 2.9364, "40%": 3.1272, "60%": 3.3179, "80%": 3.5087}}, {"code": "sz159949", "name": "创业板50ETF-华安", "cat": "宽基指数", "nav": 1.2274, "lin": 5.4, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -20.36, "from_low": 4.33, "low": 1.1765, "high": 2.1138, "low_date": "2026-10-21", "high_date": "2026-06-24", "days": 241, "trigger": 1.364, "plan": {"20%": 1.364, "40%": 1.5514, "60%": 1.7389, "80%": 1.9263}}, {"code": "sz159901", "name": "深证100ETF-易方达", "cat": "宽基指数", "nav": 2.9676, "lin": 6.2, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -17.95, "from_low": 2.84, "low": 2.8857, "high": 4.2049, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 3.1495, "plan": {"20%": 3.1495, "40%": 3.4134, "60%": 3.6772, "80%": 3.9411}}, {"code": "sh510180", "name": "上证180ETF-华安", "cat": "宽基指数", "nav": 3.6778, "lin": 8.1, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -12.37, "from_low": 1.44, "low": 3.6255, "high": 4.2746, "low_date": "2026-10-21", "high_date": "2026-01-11", "days": 241, "trigger": 3.7553, "plan": {"20%": 3.7553, "40%": 3.8851, "60%": 4.015, "80%": 4.1448}}, {"code": "sh510330", "name": "沪深300ETF-华夏", "cat": "宽基指数", "nav": 4.3603, "lin": 7.4, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -10.97, "from_low": 1.76, "low": 4.2848, "high": 5.3011, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 4.4881, "plan": {"20%": 4.4881, "40%": 4.6913, "60%": 4.8946, "80%": 5.0978}}, {"code": "sh510310", "name": "沪深300ETF-易方达", "cat": "宽基指数", "nav": 4.063, "lin": 7.5, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -12.61, "from_low": 1.77, "low": 3.9922, "high": 4.9324, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 4.1802, "plan": {"20%": 4.1802, "40%": 4.3683, "60%": 4.5563, "80%": 4.7444}}, {"code": "sh563000", "name": "中证A50ETF-平安", "cat": "宽基指数", "nav": 0.9887, "lin": 7.7, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -8.99, "from_low": 1.84, "low": 0.9708, "high": 1.2024, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 1.0171, "plan": {"20%": 1.0171, "40%": 1.0634, "60%": 1.1098, "80%": 1.1561}}, {"code": "sh563300", "name": "中证A500ETF-摩根", "cat": "宽基指数", "nav": 1.3081, "lin": 16.3, "rank": 10.4, "signal": "🟢🟢 极度低估", "ret1y": -1.11, "from_low": 5.59, "low": 1.2389, "high": 1.6624, "low_date": "2026-07-29", "high_date": "2026-05-12", "days": 241, "trigger": 1.3236, "plan": {"20%": 1.3236, "40%": 1.4083, "60%": 1.493, "80%": 1.5777}}, {"code": "sz159563", "name": "创业板综ETF-万家", "cat": "宽基指数", "nav": 1.4993, "lin": 6.6, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -14.06, "from_low": 3.31, "low": 1.4512, "high": 2.1816, "low_date": "2026-10-21", "high_date": "2026-06-21", "days": 241, "trigger": 1.5973, "plan": {"20%": 1.5973, "40%": 1.7434, "60%": 1.8894, "80%": 2.0355}}, {"code": "sz159531", "name": "中证2000ETF-南方", "cat": "宽基指数", "nav": 1.3447, "lin": 24.7, "rank": 14.1, "signal": "🟢 低估", "ret1y": -0.17, "from_low": 7.98, "low": 1.2453, "high": 1.6485, "low_date": "2026-07-19", "high_date": "2026-05-12", "days": 241, "trigger": 1.4066, "plan": {"20%": 1.3259, "40%": 1.4066, "60%": 1.4872, "80%": 1.5679}}, {"code": "sz159537", "name": "北证50ETF-易方达", "cat": "宽基指数", "nav": 0.7398, "lin": 1.8, "rank": 3.3, "signal": "🟢🟢 极度低估", "ret1y": -55.47, "from_low": 3.89, "low": 0.7121, "high": 2.2573, "low_date": "2026-10-21", "high_date": "2026-06-23", "days": 241, "trigger": 1.0211, "plan": {"20%": 1.0211, "40%": 1.3302, "60%": 1.6392, "80%": 1.9483}}, {"code": "sh588400", "name": "双创50ETF-嘉实", "cat": "宽基指数", "nav": 0.8391, "lin": 4.4, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -12.75, "from_low": 3.66, "low": 0.8095, "high": 1.4811, "low_date": "2026-10-21", "high_date": "2026-06-29", "days": 241, "trigger": 0.9438, "plan": {"20%": 0.9438, "40%": 1.0781, "60%": 1.2125, "80%": 1.3468}}, {"code": "sh512880", "name": "证券ETF-国泰", "cat": "金融 / 地产", "nav": 1.0138, "lin": 5.1, "rank": 2.9, "signal": "🟢🟢 极度低估", "ret1y": -20.25, "from_low": 1.51, "low": 0.9987, "high": 1.2923, "low_date": "2026-10-21", "high_date": "2025-10-28", "days": 241, "trigger": 1.0574, "plan": {"20%": 1.0574, "40%": 1.1161, "60%": 1.1749, "80%": 1.2336}}, {"code": "sh512800", "name": "银行ETF-华宝", "cat": "金融 / 地产", "nav": 0.8504, "lin": 82.6, "rank": 94.6, "signal": "🔴 高位", "ret1y": 2.35, "from_low": 16.16, "low": 0.7321, "high": 0.8753, "low_date": "2026-06-29", "high_date": "2026-10-18", "days": 241, "trigger": null, "plan": {"20%": 0.7607, "40%": 0.7894, "60%": 0.818, "80%": 0.8467}}, {"code": "sh512700", "name": "银行ETF-南方", "cat": "金融 / 地产", "nav": 1.5243, "lin": 47.9, "rank": 61.4, "signal": "🟡 中性", "ret1y": -9.21, "from_low": 13.06, "low": 1.3482, "high": 1.7155, "low_date": "2026-06-29", "high_date": "2025-11-19", "days": 241, "trigger": 1.5686, "plan": {"20%": 1.4217, "40%": 1.4951, "60%": 1.5686, "80%": 1.642}}, {"code": "sh512200", "name": "房地产ETF-南方", "cat": "金融 / 地产", "nav": 1.167, "lin": 8.6, "rank": 4.1, "signal": "🟢🟢 极度低估", "ret1y": -27.77, "from_low": 4.03, "low": 1.1218, "high": 1.6469, "low_date": "2026-07-23", "high_date": "2025-11-16", "days": 241, "trigger": 1.2268, "plan": {"20%": 1.2268, "40%": 1.3318, "60%": 1.4369, "80%": 1.5419}}, {"code": "sh515060", "name": "房地产ETF华夏", "cat": "金融 / 地产", "nav": 0.5616, "lin": 9.3, "rank": 4.6, "signal": "🟢🟢 极度低估", "ret1y": -27.04, "from_low": 4.27, "low": 0.5386, "high": 0.7846, "low_date": "2026-07-23", "high_date": "2025-11-16", "days": 241, "trigger": 0.5878, "plan": {"20%": 0.5878, "40%": 0.637, "60%": 0.6862, "80%": 0.7354}}, {"code": "sh512070", "name": "证券保险ETF-易方达", "cat": "金融 / 地产", "nav": 0.7475, "lin": 4.8, "rank": 2.9, "signal": "🟢🟢 极度低估", "ret1y": -16.74, "from_low": 1.67, "low": 0.7352, "high": 0.9938, "low_date": "2026-10-21", "high_date": "2026-01-05", "days": 241, "trigger": 0.7869, "plan": {"20%": 0.7869, "40%": 0.8386, "60%": 0.8904, "80%": 0.9421}}, {"code": "sh510230", "name": "金融ETF-国泰", "cat": "金融 / 地产", "nav": 1.3181, "lin": 39.9, "rank": 44.8, "signal": "🟢 低估", "ret1y": -5.02, "from_low": 7.95, "low": 1.221, "high": 1.4646, "low_date": "2026-06-29", "high_date": "2026-01-05", "days": 241, "trigger": 1.3184, "plan": {"20%": 1.2697, "40%": 1.3184, "60%": 1.3672, "80%": 1.4159}}, {"code": "sz159707", "name": "地产ETF-华宝", "cat": "金融 / 地产", "nav": 0.4934, "lin": 25.3, "rank": 28.6, "signal": "🟢 低估", "ret1y": -27.05, "from_low": 14.96, "low": 0.4292, "high": 0.6826, "low_date": "2026-06-29", "high_date": "2025-11-10", "days": 241, "trigger": 0.5306, "plan": {"20%": 0.4799, "40%": 0.5306, "60%": 0.5812, "80%": 0.6319}}, {"code": "sz159928", "name": "消费ETF-汇添富", "cat": "消费", "nav": 0.6639, "lin": 24.1, "rank": 23.7, "signal": "🟢 低估", "ret1y": -19.92, "from_low": 9.95, "low": 0.6038, "high": 0.8528, "low_date": "2026-06-25", "high_date": "2025-11-12", "days": 241, "trigger": 0.7034, "plan": {"20%": 0.6536, "40%": 0.7034, "60%": 0.7532, "80%": 0.803}}, {"code": "sh510630", "name": "消费ETF-华夏", "cat": "消费", "nav": 0.8001, "lin": 28.1, "rank": 17.8, "signal": "🟢 低估", "ret1y": -14.7, "from_low": 8.99, "low": 0.7341, "high": 0.9687, "low_date": "2026-06-25", "high_date": "2025-11-12", "days": 241, "trigger": 0.8279, "plan": {"20%": 0.781, "40%": 0.8279, "60%": 0.8749, "80%": 0.9218}}, {"code": "sz159936", "name": "可选消费ETF-广发", "cat": "消费", "nav": 1.8082, "lin": 7.3, "rank": 2.5, "signal": "🟢🟢 极度低估", "ret1y": -17.97, "from_low": 2.11, "low": 1.7709, "high": 2.2802, "low_date": "2026-10-21", "high_date": "2026-01-11", "days": 241, "trigger": 1.8728, "plan": {"20%": 1.8728, "40%": 1.9746, "60%": 2.0765, "80%": 2.1783}}, {"code": "sz515170", "name": "食品饮料ETF-华夏", "cat": "消费", "nav": 0.4613, "lin": 19.4, "rank": 19.5, "signal": "🟢🟢 极度低估", "ret1y": -19.66, "from_low": 7.33, "low": 0.4298, "high": 0.5923, "low_date": "2026-06-25", "high_date": "2025-11-12", "days": 241, "trigger": 0.4623, "plan": {"20%": 0.4623, "40%": 0.4948, "60%": 0.5273, "80%": 0.5598}}, {"code": "sh512690", "name": "酒ETF-鹏华", "cat": "消费", "nav": 0.4147, "lin": 13.8, "rank": 14.1, "signal": "🟢🟢 极度低估", "ret1y": -28.68, "from_low": 8.05, "low": 0.3838, "high": 0.607, "low_date": "2026-07-08", "high_date": "2025-11-12", "days": 241, "trigger": 0.4284, "plan": {"20%": 0.4284, "40%": 0.4731, "60%": 0.5177, "80%": 0.5624}}, {"code": "sz159996", "name": "家电ETF-国泰", "cat": "消费", "nav": 1.3501, "lin": 6.9, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -11.74, "from_low": 1.57, "low": 1.3292, "high": 1.6308, "low_date": "2026-10-21", "high_date": "2026-01-20", "days": 241, "trigger": 1.3895, "plan": {"20%": 1.3895, "40%": 1.4498, "60%": 1.5102, "80%": 1.5705}}, {"code": "sz159732", "name": "消费电子ETF-华夏", "cat": "消费", "nav": 1.1233, "lin": 14.4, "rank": 25.3, "signal": "🟢🟢 极度低估", "ret1y": -4.62, "from_low": 13.45, "low": 0.9901, "high": 1.9145, "low_date": "2025-11-20", "high_date": "2026-06-29", "days": 241, "trigger": 1.175, "plan": {"20%": 1.175, "40%": 1.3599, "60%": 1.5447, "80%": 1.7296}}, {"code": "sz159825", "name": "农业ETF-富国", "cat": "消费", "nav": 0.7092, "lin": 21.7, "rank": 15.8, "signal": "🟢 低估", "ret1y": -12.82, "from_low": 8.99, "low": 0.6507, "high": 0.9208, "low_date": "2026-06-25", "high_date": "2026-03-11", "days": 241, "trigger": 0.7587, "plan": {"20%": 0.7047, "40%": 0.7587, "60%": 0.8128, "80%": 0.8668}}, {"code": "sz159587", "name": "粮食ETF广发", "cat": "消费", "nav": 1.088, "lin": 8.0, "rank": 7.9, "signal": "🟢🟢 极度低估", "ret1y": -13.44, "from_low": 3.89, "low": 1.0473, "high": 1.5535, "low_date": "2026-07-12", "high_date": "2026-03-11", "days": 241, "trigger": 1.1485, "plan": {"20%": 1.1485, "40%": 1.2498, "60%": 1.351, "80%": 1.4523}}, {"code": "sz159698", "name": "粮食ETF-博时", "cat": "消费", "nav": 0.8425, "lin": 6.8, "rank": 7.5, "signal": "🟢🟢 极度低估", "ret1y": -13.95, "from_low": 3.27, "low": 0.8158, "high": 1.2064, "low_date": "2026-07-12", "high_date": "2026-03-11", "days": 241, "trigger": 0.8939, "plan": {"20%": 0.8939, "40%": 0.972, "60%": 1.0502, "80%": 1.1283}}, {"code": "sz159766", "name": "旅游ETF-富国", "cat": "消费", "nav": 0.5193, "lin": 2.0, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -28.01, "from_low": 1.25, "low": 0.5129, "high": 0.8368, "low_date": "2026-10-21", "high_date": "2026-02-08", "days": 241, "trigger": 0.5777, "plan": {"20%": 0.5777, "40%": 0.6425, "60%": 0.7072, "80%": 0.772}}, {"code": "sz159865", "name": "养殖ETF-国泰", "cat": "消费", "nav": 0.5255, "lin": 25.2, "rank": 16.6, "signal": "🟢 低估", "ret1y": -19.12, "from_low": 9.94, "low": 0.478, "high": 0.6666, "low_date": "2026-06-24", "high_date": "2026-03-11", "days": 241, "trigger": 0.5534, "plan": {"20%": 0.5157, "40%": 0.5534, "60%": 0.5912, "80%": 0.6289}}, {"code": "sh588700", "name": "科创医药ETF嘉实", "cat": "医药 / 医疗", "nav": 0.9311, "lin": 14.8, "rank": 10.8, "signal": "🟢🟢 极度低估", "ret1y": -18.17, "from_low": 4.92, "low": 0.8874, "high": 1.1834, "low_date": "2026-06-07", "high_date": "2026-01-12", "days": 241, "trigger": 0.9466, "plan": {"20%": 0.9466, "40%": 1.0058, "60%": 1.065, "80%": 1.1242}}, {"code": "sh588130", "name": "科创医药ETF华夏", "cat": "医药 / 医疗", "nav": 0.95, "lin": 13.3, "rank": 10.8, "signal": "🟢🟢 极度低估", "ret1y": -19.25, "from_low": 4.5, "low": 0.9091, "high": 1.217, "low_date": "2026-06-07", "high_date": "2026-01-12", "days": 241, "trigger": 0.9707, "plan": {"20%": 0.9707, "40%": 1.0323, "60%": 1.0938, "80%": 1.1554}}, {"code": "sz159992", "name": "创新药ETF-银华", "cat": "医药 / 医疗", "nav": 0.8118, "lin": 46.1, "rank": 23.2, "signal": "🟡 中性", "ret1y": -11.68, "from_low": 14.79, "low": 0.7072, "high": 0.934, "low_date": "2026-06-07", "high_date": "2026-08-19", "days": 241, "trigger": 0.8433, "plan": {"20%": 0.7526, "40%": 0.7979, "60%": 0.8433, "80%": 0.8886}}, {"code": "sh516080", "name": "创新药ETF国泰", "cat": "医药 / 医疗", "nav": 0.6484, "lin": 47.1, "rank": 26.1, "signal": "🟡 中性", "ret1y": -10.09, "from_low": 15.44, "low": 0.5617, "high": 0.7459, "low_date": "2026-06-07", "high_date": "2026-08-19", "days": 241, "trigger": 0.6722, "plan": {"20%": 0.5985, "40%": 0.6354, "60%": 0.6722, "80%": 0.7091}}, {"code": "sz159858", "name": "创新药ETF建信", "cat": "医药 / 医疗", "nav": 0.6567, "lin": 48.6, "rank": 28.2, "signal": "🟡 中性", "ret1y": -9.83, "from_low": 16.21, "low": 0.5651, "high": 0.7537, "low_date": "2026-06-07", "high_date": "2026-08-19", "days": 241, "trigger": 0.6783, "plan": {"20%": 0.6028, "40%": 0.6405, "60%": 0.6783, "80%": 0.716}}, {"code": "sh512170", "name": "医疗ETF-华宝", "cat": "医药 / 医疗", "nav": 0.3346, "lin": 43.7, "rank": 36.5, "signal": "🟡 中性", "ret1y": -10.75, "from_low": 14.71, "low": 0.2917, "high": 0.3898, "low_date": "2026-06-08", "high_date": "2026-01-13", "days": 241, "trigger": 0.3506, "plan": {"20%": 0.3113, "40%": 0.3309, "60%": 0.3506, "80%": 0.3702}}, {"code": "sh512010", "name": "医药ETF-易方达", "cat": "医药 / 医疗", "nav": 0.376, "lin": 54.8, "rank": 46.5, "signal": "🟡 中性", "ret1y": -10.94, "from_low": 17.46, "low": 0.3201, "high": 0.4222, "low_date": "2026-06-08", "high_date": "2025-10-26", "days": 241, "trigger": 0.3814, "plan": {"20%": 0.3405, "40%": 0.3609, "60%": 0.3814, "80%": 0.4018}}, {"code": "sz159938", "name": "医药ETF广发", "cat": "医药 / 医疗", "nav": 0.6299, "lin": 45.4, "rank": 24.5, "signal": "🟡 中性", "ret1y": -11.49, "from_low": 12.08, "low": 0.562, "high": 0.7117, "low_date": "2026-06-08", "high_date": "2025-10-26", "days": 241, "trigger": 0.6518, "plan": {"20%": 0.5919, "40%": 0.6219, "60%": 0.6518, "80%": 0.6818}}, {"code": "sh512290", "name": "生物医药ETF-国泰", "cat": "医药 / 医疗", "nav": 1.0034, "lin": 56.0, "rank": 45.2, "signal": "🟡 中性", "ret1y": -10.89, "from_low": 18.45, "low": 0.8471, "high": 1.126, "low_date": "2026-06-08", "high_date": "2025-10-26", "days": 241, "trigger": 1.0144, "plan": {"20%": 0.9029, "40%": 0.9587, "60%": 1.0144, "80%": 1.0702}}, {"code": "sz159983", "name": "生物科技ETF-天弘", "cat": "医药 / 医疗", "nav": 0.9451, "lin": 3.9, "rank": 1.6, "signal": "🟢🟢 极度低估", "ret1y": -11.1, "from_low": 0.97, "low": 0.936, "high": 1.1719, "low_date": "2023-12-25", "high_date": "2023-01-31", "days": 250, "trigger": 0.9832, "plan": {"20%": 0.9832, "40%": 1.0304, "60%": 1.0775, "80%": 1.1247}}, {"code": "sz159837", "name": "生物科技ETF易方达", "cat": "医药 / 医疗", "nav": 0.4822, "lin": 50.0, "rank": 32.0, "signal": "🟡 中性", "ret1y": -11.64, "from_low": 16.22, "low": 0.4149, "high": 0.5495, "low_date": "2026-06-07", "high_date": "2026-01-12", "days": 241, "trigger": 0.4957, "plan": {"20%": 0.4418, "40%": 0.4687, "60%": 0.4957, "80%": 0.5226}}, {"code": "sz159643", "name": "疫苗ETF国泰", "cat": "医药 / 医疗", "nav": 0.5337, "lin": 29.6, "rank": 17.4, "signal": "🟢 低估", "ret1y": -17.54, "from_low": 10.73, "low": 0.482, "high": 0.6565, "low_date": "2026-06-10", "high_date": "2025-10-30", "days": 241, "trigger": 0.5518, "plan": {"20%": 0.5169, "40%": 0.5518, "60%": 0.5867, "80%": 0.6216}}, {"code": "sz159645", "name": "疫苗ETF富国", "cat": "医药 / 医疗", "nav": 0.5939, "lin": 26.4, "rank": 14.9, "signal": "🟢 低估", "ret1y": -18.95, "from_low": 9.92, "low": 0.5403, "high": 0.7433, "low_date": "2026-06-10", "high_date": "2025-10-30", "days": 241, "trigger": 0.6215, "plan": {"20%": 0.5809, "40%": 0.6215, "60%": 0.6621, "80%": 0.7027}}, {"code": "sz560080", "name": "中药ETF-鹏华", "cat": "医药 / 医疗", "nav": 0.9513, "lin": 33.3, "rank": 21.6, "signal": "🟢 低估", "ret1y": -11.79, "from_low": 10.72, "low": 0.8592, "high": 1.1359, "low_date": "2026-06-25", "high_date": "2025-11-13", "days": 241, "trigger": 0.9699, "plan": {"20%": 0.9145, "40%": 0.9699, "60%": 1.0252, "80%": 1.0806}}, {"code": "sz159828", "name": "医疗保健ETF-国泰", "cat": "医药 / 医疗", "nav": 0.4174, "lin": 44.4, "rank": 37.8, "signal": "🟡 中性", "ret1y": -10.08, "from_low": 14.83, "low": 0.3635, "high": 0.4849, "low_date": "2026-06-08", "high_date": "2026-01-13", "days": 241, "trigger": 0.4363, "plan": {"20%": 0.3878, "40%": 0.4121, "60%": 0.4363, "80%": 0.4606}}, {"code": "sh515790", "name": "光伏ETF-华泰柏瑞", "cat": "新能源 / 碳中和", "nav": 0.7172, "lin": 2.2, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -23.79, "from_low": 1.51, "low": 0.7065, "high": 1.1822, "low_date": "2026-10-21", "high_date": "2026-03-11", "days": 241, "trigger": 0.8016, "plan": {"20%": 0.8016, "40%": 0.8968, "60%": 0.9919, "80%": 1.0871}}, {"code": "sh515700", "name": "新能源车ETF-平安", "cat": "新能源 / 碳中和", "nav": 1.7775, "lin": 6.5, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -26.66, "from_low": 4.77, "low": 1.6965, "high": 2.9508, "low_date": "2026-10-21", "high_date": "2026-05-05", "days": 241, "trigger": 1.9474, "plan": {"20%": 1.9474, "40%": 2.1982, "60%": 2.4491, "80%": 2.6999}}, {"code": "sz516160", "name": "新能源ETF-南方", "cat": "新能源 / 碳中和", "nav": 2.0062, "lin": 4.3, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -28.08, "from_low": 3.19, "low": 1.9442, "high": 3.3792, "low_date": "2026-10-21", "high_date": "2026-05-05", "days": 241, "trigger": 2.2312, "plan": {"20%": 2.2312, "40%": 2.5182, "60%": 2.8052, "80%": 3.0922}}, {"code": "sz159755", "name": "电池ETF-广发", "cat": "新能源 / 碳中和", "nav": 0.7604, "lin": 5.8, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -27.97, "from_low": 4.32, "low": 0.7289, "high": 1.2691, "low_date": "2026-10-21", "high_date": "2026-05-05", "days": 241, "trigger": 0.8369, "plan": {"20%": 0.8369, "40%": 0.945, "60%": 1.053, "80%": 1.1611}}, {"code": "sz159566", "name": "储能电池ETF易方达", "cat": "新能源 / 碳中和", "nav": 1.476, "lin": 4.7, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -28.99, "from_low": 3.5, "low": 1.4261, "high": 2.4831, "low_date": "2026-10-21", "high_date": "2026-05-19", "days": 241, "trigger": 1.6375, "plan": {"20%": 1.6375, "40%": 1.8489, "60%": 2.0603, "80%": 2.2717}}, {"code": "sz158008", "name": "新能源电池ETF-华安", "cat": "新能源 / 碳中和", "nav": 0.7915, "lin": 11.2, "rank": 7.9, "signal": "🟢🟢 极度低估", "ret1y": -20.85, "from_low": 3.46, "low": 0.765, "high": 1.0023, "low_date": "2026-10-21", "high_date": "2026-08-26", "days": 38, "trigger": 0.8125, "plan": {"20%": 0.8125, "40%": 0.8599, "60%": 0.9074, "80%": 0.9548}}, {"code": "sz159790", "name": "碳中和ETF-华夏", "cat": "新能源 / 碳中和", "nav": 0.6001, "lin": 4.9, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -22.44, "from_low": 2.3, "low": 0.5866, "high": 0.8622, "low_date": "2026-10-21", "high_date": "2026-05-05", "days": 241, "trigger": 0.6417, "plan": {"20%": 0.6417, "40%": 0.6968, "60%": 0.752, "80%": 0.8071}}, {"code": "sz159326", "name": "电网设备ETF-华夏", "cat": "新能源 / 碳中和", "nav": 1.4706, "lin": 13.0, "rank": 14.5, "signal": "🟢🟢 极度低估", "ret1y": 5.34, "from_low": 8.62, "low": 1.3539, "high": 2.2533, "low_date": "2025-11-20", "high_date": "2026-06-21", "days": 241, "trigger": 1.5338, "plan": {"20%": 1.5338, "40%": 1.7137, "60%": 1.8935, "80%": 2.0734}}, {"code": "sh515050", "name": "5G通信ETF-华夏", "cat": "科技 / TMT", "nav": 0.7974, "lin": 0.8, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -64.61, "from_low": 2.64, "low": 0.7769, "high": 3.2935, "low_date": "2026-10-21", "high_date": "2026-05-10", "days": 241, "trigger": 1.2802, "plan": {"20%": 1.2802, "40%": 1.7835, "60%": 2.2869, "80%": 2.7902}}, {"code": "sh515880", "name": "通信ETF-国泰", "cat": "科技 / TMT", "nav": 0.5144, "lin": 0.4, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -82.31, "from_low": 1.94, "low": 0.5046, "high": 3.258, "low_date": "2026-10-21", "high_date": "2026-01-29", "days": 241, "trigger": 1.0553, "plan": {"20%": 1.0553, "40%": 1.606, "60%": 2.1566, "80%": 2.7073}}, {"code": "sz516510", "name": "云计算ETF-易方达", "cat": "科技 / TMT", "nav": 1.5004, "lin": 12.7, "rank": 3.3, "signal": "🟢🟢 极度低估", "ret1y": -11.06, "from_low": 5.49, "low": 1.4223, "high": 2.0394, "low_date": "2026-10-15", "high_date": "2026-01-13", "days": 241, "trigger": 1.5457, "plan": {"20%": 1.5457, "40%": 1.6691, "60%": 1.7926, "80%": 1.916}}, {"code": "sh512480", "name": "半导体ETF-国联安", "cat": "科技 / TMT", "nav": 0.8338, "lin": 1.1, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -46.69, "from_low": 3.03, "low": 0.8093, "high": 2.9872, "low_date": "2026-10-21", "high_date": "2026-06-29", "days": 241, "trigger": 1.2449, "plan": {"20%": 1.2449, "40%": 1.6805, "60%": 2.116, "80%": 2.5516}}, {"code": "sz159995", "name": "芯片ETF-华夏", "cat": "科技 / TMT", "nav": 0.9084, "lin": 1.0, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -52.0, "from_low": 2.84, "low": 0.8833, "high": 3.3724, "low_date": "2026-10-21", "high_date": "2026-06-29", "days": 241, "trigger": 1.3811, "plan": {"20%": 1.3811, "40%": 1.8789, "60%": 2.3768, "80%": 2.8746}}, {"code": "sh588200", "name": "科创芯片ETF-嘉实", "cat": "科技 / TMT", "nav": 0.9166, "lin": 0.6, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -64.03, "from_low": 2.88, "low": 0.8909, "high": 4.9038, "low_date": "2026-10-21", "high_date": "2026-06-29", "days": 241, "trigger": 1.6935, "plan": {"20%": 1.6935, "40%": 2.4961, "60%": 3.2986, "80%": 4.1012}}, {"code": "sz159516", "name": "半导体材料设备ETF-国泰", "cat": "科技 / TMT", "nav": 0.5384, "lin": 0.3, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -65.0, "from_low": 0.79, "low": 0.5342, "high": 1.9665, "low_date": "2026-10-21", "high_date": "2026-06-30", "days": 241, "trigger": 0.8207, "plan": {"20%": 0.8207, "40%": 1.1071, "60%": 1.3936, "80%": 1.68}}, {"code": "sh561980", "name": "中证半导体产业ETF-华安", "cat": "科技 / TMT", "nav": 0.532, "lin": 0.2, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -74.42, "from_low": 1.49, "low": 0.5242, "high": 4.0119, "low_date": "2026-10-21", "high_date": "2026-06-23", "days": 241, "trigger": 1.2217, "plan": {"20%": 1.2217, "40%": 1.9193, "60%": 2.6168, "80%": 3.3144}}, {"code": "sz159627", "name": "存储ETF-嘉实", "cat": "科技 / TMT", "nav": 1.1511, "lin": 8.0, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -12.58, "from_low": 2.12, "low": 1.1272, "high": 1.4268, "low_date": "2026-10-21", "high_date": "2026-05-12", "days": 241, "trigger": 1.1871, "plan": {"20%": 1.1871, "40%": 1.247, "60%": 1.307, "80%": 1.3669}}, {"code": "sz159819", "name": "人工智能ETF-易方达", "cat": "科技 / TMT", "nav": 1.4978, "lin": 16.8, "rank": 20.3, "signal": "🟢🟢 极度低估", "ret1y": -4.77, "from_low": 10.84, "low": 1.3513, "high": 2.2246, "low_date": "2025-11-20", "high_date": "2026-06-29", "days": 241, "trigger": 1.526, "plan": {"20%": 1.526, "40%": 1.7006, "60%": 1.8753, "80%": 2.0499}}, {"code": "sz562500", "name": "机器人ETF-华夏", "cat": "科技 / TMT", "nav": 0.8838, "lin": 22.6, "rank": 5.0, "signal": "🟢 低估", "ret1y": -14.72, "from_low": 12.14, "low": 0.7881, "high": 1.2124, "low_date": "2026-10-14", "high_date": "2026-05-24", "days": 241, "trigger": 0.9578, "plan": {"20%": 0.873, "40%": 0.9578, "60%": 1.0427, "80%": 1.1275}}, {"code": "sz159770", "name": "机器人ETF-天弘", "cat": "科技 / TMT", "nav": 0.9166, "lin": 22.7, "rank": 5.0, "signal": "🟢 低估", "ret1y": -14.7, "from_low": 12.16, "low": 0.8172, "high": 1.2552, "low_date": "2026-10-14", "high_date": "2026-05-24", "days": 241, "trigger": 0.9924, "plan": {"20%": 0.9048, "40%": 0.9924, "60%": 1.08, "80%": 1.1676}}, {"code": "sz159526", "name": "机器人ETF-易方达", "cat": "科技 / TMT", "nav": 1.3124, "lin": 23.2, "rank": 5.0, "signal": "🟢 低估", "ret1y": -13.46, "from_low": 12.07, "low": 1.1711, "high": 1.7789, "low_date": "2026-10-14", "high_date": "2026-05-24", "days": 241, "trigger": 1.4142, "plan": {"20%": 1.2927, "40%": 1.4142, "60%": 1.5358, "80%": 1.6573}}, {"code": "sh515000", "name": "科技ETF-华宝", "cat": "科技 / TMT", "nav": 1.0518, "lin": 19.5, "rank": 40.2, "signal": "🟢🟢 极度低估", "ret1y": 0.06, "from_low": 17.74, "low": 0.8933, "high": 1.7081, "low_date": "2025-11-20", "high_date": "2026-06-29", "days": 241, "trigger": 1.0563, "plan": {"20%": 1.0563, "40%": 1.2192, "60%": 1.3822, "80%": 1.5451}}, {"code": "sh515230", "name": "软件ETF-国泰", "cat": "科技 / TMT", "nav": 0.6805, "lin": 9.8, "rank": 16.2, "signal": "🟢🟢 极度低估", "ret1y": -27.32, "from_low": 6.93, "low": 0.6364, "high": 1.0873, "low_date": "2026-10-07", "high_date": "2026-01-13", "days": 241, "trigger": 0.7266, "plan": {"20%": 0.7266, "40%": 0.8168, "60%": 0.9069, "80%": 0.9971}}, {"code": "sh512720", "name": "计算机ETF-国泰", "cat": "科技 / TMT", "nav": 1.0541, "lin": 12.2, "rank": 4.1, "signal": "🟢🟢 极度低估", "ret1y": -18.6, "from_low": 4.82, "low": 1.0056, "high": 1.4042, "low_date": "2026-10-14", "high_date": "2026-05-12", "days": 241, "trigger": 1.0853, "plan": {"20%": 1.0853, "40%": 1.165, "60%": 1.2448, "80%": 1.3245}}, {"code": "sh515400", "name": "大数据ETF-富国", "cat": "科技 / TMT", "nav": 0.7829, "lin": 11.9, "rank": 4.6, "signal": "🟢🟢 极度低估", "ret1y": -22.12, "from_low": 6.69, "low": 0.7338, "high": 1.1476, "low_date": "2026-10-15", "high_date": "2026-01-13", "days": 241, "trigger": 0.8166, "plan": {"20%": 0.8166, "40%": 0.8993, "60%": 0.9821, "80%": 1.0648}}, {"code": "sz159997", "name": "电子ETF-天弘", "cat": "科技 / TMT", "nav": 1.7026, "lin": 16.6, "rank": 34.4, "signal": "🟢🟢 极度低估", "ret1y": -2.99, "from_low": 15.39, "low": 1.4755, "high": 2.8463, "low_date": "2025-11-20", "high_date": "2026-06-29", "days": 241, "trigger": 1.7497, "plan": {"20%": 1.7497, "40%": 2.0238, "60%": 2.298, "80%": 2.5721}}, {"code": "sz159381", "name": "创业板人工智能ETF-南方", "cat": "科技 / TMT", "nav": 0.9572, "lin": 2.0, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -44.71, "from_low": 3.91, "low": 0.9212, "high": 2.7255, "low_date": "2026-10-21", "high_date": "2026-05-27", "days": 241, "trigger": 1.2821, "plan": {"20%": 1.2821, "40%": 1.6429, "60%": 2.0038, "80%": 2.3646}}, {"code": "sz159663", "name": "机床ETF华夏", "cat": "科技 / TMT", "nav": 0.8051, "lin": 1.8, "rank": 2.9, "signal": "🟢🟢 极度低估", "ret1y": -46.6, "from_low": 4.45, "low": 0.7708, "high": 2.73, "low_date": "2026-10-21", "high_date": "2026-06-24", "days": 241, "trigger": 1.1626, "plan": {"20%": 1.1626, "40%": 1.5545, "60%": 1.9463, "80%": 2.3382}}, {"code": "sh512660", "name": "军工ETF-国泰", "cat": "军工 / 国防", "nav": 1.0621, "lin": 5.0, "rank": 2.9, "signal": "🟢🟢 极度低估", "ret1y": -13.09, "from_low": 3.03, "low": 1.0309, "high": 1.6499, "low_date": "2026-10-14", "high_date": "2026-01-11", "days": 241, "trigger": 1.1547, "plan": {"20%": 1.1547, "40%": 1.2785, "60%": 1.4023, "80%": 1.5261}}, {"code": "sh512670", "name": "国防ETF-鹏华", "cat": "军工 / 国防", "nav": 0.7388, "lin": 9.7, "rank": 8.3, "signal": "🟢🟢 极度低估", "ret1y": -10.38, "from_low": 5.36, "low": 0.7012, "high": 1.0893, "low_date": "2026-07-19", "high_date": "2026-01-11", "days": 241, "trigger": 0.7788, "plan": {"20%": 0.7788, "40%": 0.8564, "60%": 0.9341, "80%": 1.0117}}, {"code": "sh512710", "name": "军工龙头ETF-富国", "cat": "军工 / 国防", "nav": 0.6227, "lin": 10.4, "rank": 16.2, "signal": "🟢🟢 极度低估", "ret1y": -11.2, "from_low": 6.59, "low": 0.5842, "high": 0.9561, "low_date": "2026-07-16", "high_date": "2026-01-11", "days": 241, "trigger": 0.6586, "plan": {"20%": 0.6586, "40%": 0.733, "60%": 0.8073, "80%": 0.8817}}, {"code": "sz159227", "name": "航空航天ETF-国泰", "cat": "军工 / 国防", "nav": 0.9817, "lin": 7.1, "rank": 12.0, "signal": "🟢🟢 极度低估", "ret1y": -15.0, "from_low": 5.49, "low": 0.9306, "high": 1.6549, "low_date": "2026-07-19", "high_date": "2026-01-11", "days": 241, "trigger": 1.0755, "plan": {"20%": 1.0755, "40%": 1.2203, "60%": 1.3652, "80%": 1.51}}, {"code": "sz159267", "name": "航天ETF华安", "cat": "军工 / 国防", "nav": 0.8331, "lin": 6.5, "rank": 11.6, "signal": "🟢🟢 极度低估", "ret1y": -15.82, "from_low": 5.07, "low": 0.7929, "high": 1.4137, "low_date": "2026-07-19", "high_date": "2026-01-11", "days": 241, "trigger": 0.9171, "plan": {"20%": 0.9171, "40%": 1.0412, "60%": 1.1654, "80%": 1.2895}}, {"code": "sh560710", "name": "船舶ETF富国", "cat": "军工 / 国防", "nav": 0.9161, "lin": 30.3, "rank": 32.6, "signal": "🟢 低估", "ret1y": -8.39, "from_low": 12.16, "low": 0.8168, "high": 1.1448, "low_date": "2026-07-16", "high_date": "2026-03-05", "days": 172, "trigger": 0.948, "plan": {"20%": 0.8824, "40%": 0.948, "60%": 1.0136, "80%": 1.0792}}, {"code": "sh515220", "name": "煤炭ETF-国泰", "cat": "周期 / 资源", "nav": 1.2048, "lin": 44.2, "rank": 48.1, "signal": "🟡 中性", "ret1y": 0.81, "from_low": 17.27, "low": 1.0274, "high": 1.4284, "low_date": "2025-12-30", "high_date": "2026-06-03", "days": 241, "trigger": 1.268, "plan": {"20%": 1.1076, "40%": 1.1878, "60%": 1.268, "80%": 1.3482}}, {"code": "sh512400", "name": "有色金属ETF-南方", "cat": "周期 / 资源", "nav": 1.4894, "lin": 2.8, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -14.48, "from_low": 2.15, "low": 1.4581, "high": 2.587, "low_date": "2026-10-21", "high_date": "2026-01-28", "days": 241, "trigger": 1.6839, "plan": {"20%": 1.6839, "40%": 1.9097, "60%": 2.1354, "80%": 2.3612}}, {"code": "sh516780", "name": "稀土ETF-华泰柏瑞", "cat": "周期 / 资源", "nav": 0.7322, "lin": 1.8, "rank": 3.3, "signal": "🟢🟢 极度低估", "ret1y": -59.37, "from_low": 3.78, "low": 0.7055, "high": 2.2269, "low_date": "2026-10-14", "high_date": "2026-02-26", "days": 241, "trigger": 1.0098, "plan": {"20%": 1.0098, "40%": 1.3141, "60%": 1.6183, "80%": 1.9226}}, {"code": "sh516020", "name": "化工ETF-华宝", "cat": "周期 / 资源", "nav": 0.7353, "lin": 5.4, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -2.14, "from_low": 2.44, "low": 0.7178, "high": 1.0408, "low_date": "2026-10-21", "high_date": "2026-03-01", "days": 241, "trigger": 0.7824, "plan": {"20%": 0.7824, "40%": 0.847, "60%": 0.9116, "80%": 0.9762}}, {"code": "sh515210", "name": "钢铁ETF-国泰", "cat": "周期 / 资源", "nav": 1.082, "lin": 0.1, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -26.89, "from_low": 0.06, "low": 1.0813, "high": 1.6778, "low_date": "2026-10-21", "high_date": "2026-03-01", "days": 241, "trigger": 1.2006, "plan": {"20%": 1.2006, "40%": 1.3199, "60%": 1.4392, "80%": 1.5585}}, {"code": "sz159611", "name": "电力ETF-鹏华", "cat": "周期 / 资源", "nav": 1.021, "lin": 8.2, "rank": 7.1, "signal": "🟢🟢 极度低估", "ret1y": -4.46, "from_low": 2.09, "low": 1.0001, "high": 1.2543, "low_date": "2025-12-30", "high_date": "2026-05-31", "days": 241, "trigger": 1.0509, "plan": {"20%": 1.0509, "40%": 1.1018, "60%": 1.1526, "80%": 1.2035}}, {"code": "sz159625", "name": "绿色电力ETF嘉实", "cat": "周期 / 资源", "nav": 1.1848, "lin": 6.4, "rank": 5.8, "signal": "🟢🟢 极度低估", "ret1y": -4.86, "from_low": 1.43, "low": 1.1681, "high": 1.4272, "low_date": "2025-12-30", "high_date": "2026-05-31", "days": 241, "trigger": 1.2199, "plan": {"20%": 1.2199, "40%": 1.2717, "60%": 1.3236, "80%": 1.3754}}, {"code": "sz159870", "name": "化工ETF-鹏华", "cat": "周期 / 资源", "nav": 0.6878, "lin": 5.3, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -2.98, "from_low": 2.43, "low": 0.6715, "high": 0.9797, "low_date": "2026-10-21", "high_date": "2026-03-01", "days": 241, "trigger": 0.7331, "plan": {"20%": 0.7331, "40%": 0.7948, "60%": 0.8564, "80%": 0.9181}}, {"code": "sh516110", "name": "汽车ETF-国泰", "cat": "周期 / 资源", "nav": 1.046, "lin": 7.4, "rank": 3.7, "signal": "🟢🟢 极度低估", "ret1y": -29.0, "from_low": 3.45, "low": 1.0111, "high": 1.4858, "low_date": "2026-10-14", "high_date": "2025-10-28", "days": 241, "trigger": 1.106, "plan": {"20%": 1.106, "40%": 1.201, "60%": 1.2959, "80%": 1.3909}}, {"code": "sz159309", "name": "油气资源ETF-汇添富", "cat": "周期 / 资源", "nav": 1.3451, "lin": 37.9, "rank": 41.9, "signal": "🟢 低估", "ret1y": 25.59, "from_low": 26.43, "low": 1.0639, "high": 1.8053, "low_date": "2025-10-27", "high_date": "2026-03-02", "days": 241, "trigger": 1.3605, "plan": {"20%": 1.2122, "40%": 1.3605, "60%": 1.5087, "80%": 1.657}}, {"code": "sz159930", "name": "能源ETF-汇添富", "cat": "周期 / 资源", "nav": 1.7208, "lin": 62.0, "rank": 71.0, "signal": "🟠 偏高", "ret1y": 18.99, "from_low": 20.94, "low": 1.4229, "high": 1.9032, "low_date": "2025-12-16", "high_date": "2026-03-02", "days": 241, "trigger": null, "plan": {"20%": 1.519, "40%": 1.615, "60%": 1.7111, "80%": 1.8071}}, {"code": "sh561360", "name": "石油ETF-国泰", "cat": "周期 / 资源", "nav": 1.3839, "lin": 37.1, "rank": 36.1, "signal": "🟢 低估", "ret1y": 21.96, "from_low": 22.74, "low": 1.1275, "high": 1.818, "low_date": "2025-10-27", "high_date": "2026-03-02", "days": 241, "trigger": 1.4037, "plan": {"20%": 1.2656, "40%": 1.4037, "60%": 1.5418, "80%": 1.6799}}, {"code": "sz159697", "name": "石油ETF-鹏华", "cat": "周期 / 资源", "nav": 1.2761, "lin": 28.7, "rank": 37.3, "signal": "🟢 低估", "ret1y": 15.16, "from_low": 16.09, "low": 1.0992, "high": 1.7146, "low_date": "2025-10-27", "high_date": "2026-03-02", "days": 241, "trigger": 1.3454, "plan": {"20%": 1.2223, "40%": 1.3454, "60%": 1.4684, "80%": 1.5915}}, {"code": "sz159731", "name": "石化ETF华夏", "cat": "周期 / 资源", "nav": 0.8568, "lin": 20.4, "rank": 17.4, "signal": "🟢 低估", "ret1y": 7.61, "from_low": 8.46, "low": 0.79, "high": 1.1172, "low_date": "2025-11-03", "high_date": "2026-03-01", "days": 241, "trigger": 0.9209, "plan": {"20%": 0.8554, "40%": 0.9209, "60%": 0.9863, "80%": 1.0518}}, {"code": "sz159981", "name": "能源化工ETF建信", "cat": "周期 / 资源", "nav": 1.8417, "lin": 87.3, "rank": 97.5, "signal": "🔴 高位", "ret1y": 46.88, "from_low": 55.93, "low": 1.1811, "high": 1.9382, "low_date": "2025-12-11", "high_date": "2026-10-08", "days": 241, "trigger": null, "plan": {"20%": 1.3325, "40%": 1.4839, "60%": 1.6354, "80%": 1.7868}}, {"code": "sz516750", "name": "建材ETF-国泰", "cat": "周期 / 资源", "nav": 0.5638, "lin": 4.5, "rank": 5.4, "signal": "🟢🟢 极度低估", "ret1y": -21.59, "from_low": 2.25, "low": 0.5514, "high": 0.8252, "low_date": "2026-10-14", "high_date": "2026-02-24", "days": 241, "trigger": 0.6062, "plan": {"20%": 0.6062, "40%": 0.6609, "60%": 0.7157, "80%": 0.7704}}, {"code": "sh516950", "name": "基建ETF-国泰", "cat": "周期 / 资源", "nav": 0.9685, "lin": 2.7, "rank": 1.7, "signal": "🟢🟢 极度低估", "ret1y": -19.9, "from_low": 0.87, "low": 0.9601, "high": 1.2692, "low_date": "2026-10-21", "high_date": "2026-03-12", "days": 241, "trigger": 1.0219, "plan": {"20%": 1.0219, "40%": 1.0837, "60%": 1.1456, "80%": 1.2074}}, {"code": "sz159985", "name": "豆粕ETF-华夏", "cat": "周期 / 资源", "nav": 2.154, "lin": 66.7, "rank": 86.3, "signal": "🟠 偏高", "ret1y": 14.27, "from_low": 14.45, "low": 1.882, "high": 2.2896, "low_date": "2026-02-03", "high_date": "2026-09-16", "days": 241, "trigger": null, "plan": {"20%": 1.9635, "40%": 2.045, "60%": 2.1266, "80%": 2.2081}}, {"code": "sh512580", "name": "环保ETF-广发", "cat": "周期 / 资源", "nav": 1.014, "lin": 4.8, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -20.36, "from_low": 2.36, "low": 0.9906, "high": 1.4731, "low_date": "2026-10-21", "high_date": "2026-05-12", "days": 241, "trigger": 1.0871, "plan": {"20%": 1.0871, "40%": 1.1836, "60%": 1.2801, "80%": 1.3766}}, {"code": "sz159666", "name": "交通运输ETF华夏", "cat": "周期 / 资源", "nav": 0.954, "lin": 26.6, "rank": 12.0, "signal": "🟢 低估", "ret1y": -7.09, "from_low": 5.1, "low": 0.9077, "high": 1.0816, "low_date": "2026-06-29", "high_date": "2026-03-02", "days": 241, "trigger": 0.9773, "plan": {"20%": 0.9425, "40%": 0.9773, "60%": 1.012, "80%": 1.0468}}, {"code": "sz159201", "name": "自由现金流ETF-国泰", "cat": "红利 / 策略", "nav": 1.1487, "lin": 25.2, "rank": 11.6, "signal": "🟢 低估", "ret1y": -2.51, "from_low": 8.16, "low": 1.062, "high": 1.4056, "low_date": "2026-06-29", "high_date": "2026-03-11", "days": 241, "trigger": 1.1994, "plan": {"20%": 1.1307, "40%": 1.1994, "60%": 1.2682, "80%": 1.3369}}, {"code": "sh515450", "name": "红利低波50ETF-南方", "cat": "红利 / 策略", "nav": 1.4258, "lin": 65.3, "rank": 60.2, "signal": "🟠 偏高", "ret1y": -2.0, "from_low": 8.8, "low": 1.3105, "high": 1.4871, "low_date": "2026-06-29", "high_date": "2025-11-11", "days": 241, "trigger": null, "plan": {"20%": 1.3458, "40%": 1.3811, "60%": 1.4165, "80%": 1.4518}}, {"code": "sz159581", "name": "红利ETF-万家中证", "cat": "红利 / 策略", "nav": 1.0316, "lin": 42.5, "rank": 10.0, "signal": "🟡 中性", "ret1y": -4.99, "from_low": 7.47, "low": 0.9599, "high": 1.1286, "low_date": "2026-06-29", "high_date": "2026-03-11", "days": 241, "trigger": 1.0611, "plan": {"20%": 0.9936, "40%": 1.0274, "60%": 1.0611, "80%": 1.0949}}, {"code": "sh512890", "name": "红利低波ETF-华泰柏瑞", "cat": "红利 / 策略", "nav": 1.1973, "lin": 75.3, "rank": 75.9, "signal": "🟠 偏高", "ret1y": -0.1, "from_low": 12.23, "low": 1.0668, "high": 1.2402, "low_date": "2026-06-29", "high_date": "2025-11-11", "days": 241, "trigger": null, "plan": {"20%": 1.1015, "40%": 1.1362, "60%": 1.1708, "80%": 1.2055}}, {"code": "sh510880", "name": "红利ETF-华泰柏瑞", "cat": "红利 / 策略", "nav": 3.3134, "lin": 68.4, "rank": 73.0, "signal": "🟠 偏高", "ret1y": 1.25, "from_low": 13.85, "low": 2.9103, "high": 3.4997, "low_date": "2026-06-29", "high_date": "2026-10-13", "days": 241, "trigger": null, "plan": {"20%": 3.0282, "40%": 3.1461, "60%": 3.2639, "80%": 3.3818}}, {"code": "sh515080", "name": "中证红利ETF-招商", "cat": "红利 / 策略", "nav": 1.5256, "lin": 42.7, "rank": 9.5, "signal": "🟡 中性", "ret1y": -5.47, "from_low": 8.34, "low": 1.4082, "high": 1.6834, "low_date": "2026-06-29", "high_date": "2026-03-11", "days": 241, "trigger": 1.5733, "plan": {"20%": 1.4632, "40%": 1.5183, "60%": 1.5733, "80%": 1.6284}}, {"code": "sh561580", "name": "央企红利ETF-国泰", "cat": "红利 / 策略", "nav": 1.247, "lin": 62.3, "rank": 42.7, "signal": "🟠 偏高", "ret1y": -1.79, "from_low": 14.11, "low": 1.0928, "high": 1.3402, "low_date": "2026-06-29", "high_date": "2026-03-02", "days": 241, "trigger": null, "plan": {"20%": 1.1423, "40%": 1.1918, "60%": 1.2412, "80%": 1.2907}}, {"code": "sz158001", "name": "价值ETF-嘉实", "cat": "红利 / 策略", "nav": 0.9582, "lin": 4.3, "rank": 5.1, "signal": "🟢🟢 极度低估", "ret1y": -4.18, "from_low": 0.26, "low": 0.9557, "high": 1.0135, "low_date": "2026-10-21", "high_date": "2026-09-08", "days": 39, "trigger": 0.9673, "plan": {"20%": 0.9673, "40%": 0.9788, "60%": 0.9904, "80%": 1.0019}}, {"code": "sz159259", "name": "成长ETF-易方达", "cat": "红利 / 策略", "nav": 1.031, "lin": 15.6, "rank": 15.8, "signal": "🟢🟢 极度低估", "ret1y": -1.54, "from_low": 16.58, "low": 0.8844, "high": 1.8216, "low_date": "2025-11-20", "high_date": "2026-06-21", "days": 241, "trigger": 1.0718, "plan": {"20%": 1.0718, "40%": 1.2593, "60%": 1.4467, "80%": 1.6342}}, {"code": "sh515910", "name": "质量ETF-中金", "cat": "红利 / 策略", "nav": 0.6063, "lin": 9.1, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -8.54, "from_low": 2.26, "low": 0.5929, "high": 0.7398, "low_date": "2026-10-21", "high_date": "2026-06-02", "days": 241, "trigger": 0.6223, "plan": {"20%": 0.6223, "40%": 0.6517, "60%": 0.681, "80%": 0.7104}}, {"code": "sh512390", "name": "低波ETF-平安", "cat": "红利 / 策略", "nav": 1.2208, "lin": 39.2, "rank": 35.0, "signal": "🟢 低估", "ret1y": 1.06, "from_low": 4.09, "low": 1.1728, "high": 1.2952, "low_date": "2026-03-22", "high_date": "2026-06-21", "days": 214, "trigger": 1.2218, "plan": {"20%": 1.1973, "40%": 1.2218, "60%": 1.2462, "80%": 1.2707}}, {"code": "sz159916", "name": "基本面ETF-建信", "cat": "红利 / 策略", "nav": 4.7526, "lin": 10.4, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -10.36, "from_low": 1.69, "low": 4.6737, "high": 5.4325, "low_date": "2026-10-21", "high_date": "2026-05-10", "days": 241, "trigger": 4.8255, "plan": {"20%": 4.8255, "40%": 4.9772, "60%": 5.129, "80%": 5.2807}}, {"code": "sh513630", "name": "港股红利ETF-摩根", "cat": "红利 / 策略", "nav": 1.5291, "lin": 24.5, "rank": 7.1, "signal": "🟢 低估", "ret1y": -5.71, "from_low": 4.84, "low": 1.4585, "high": 1.7467, "low_date": "2026-06-30", "high_date": "2026-02-23", "days": 241, "trigger": 1.5738, "plan": {"20%": 1.5161, "40%": 1.5738, "60%": 1.6314, "80%": 1.6891}}, {"code": "sz159792", "name": "港股通互联网ETF-富国", "cat": "跨境 / 商品", "nav": 0.5127, "lin": 1.9, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -48.31, "from_low": 1.85, "low": 0.5034, "high": 0.9918, "low_date": "2026-10-21", "high_date": "2025-10-26", "days": 241, "trigger": 0.6011, "plan": {"20%": 0.6011, "40%": 0.6988, "60%": 0.7964, "80%": 0.8941}}, {"code": "sz159735", "name": "港股消费ETF银华", "cat": "消费", "nav": 0.6251, "lin": 5.5, "rank": 2.5, "signal": "🟢🟢 极度低估", "ret1y": -28.39, "from_low": 2.44, "low": 0.6102, "high": 0.8789, "low_date": "2026-10-21", "high_date": "2026-02-09", "days": 241, "trigger": 0.6639, "plan": {"20%": 0.6639, "40%": 0.7177, "60%": 0.7714, "80%": 0.8252}}, {"code": "sz159636", "name": "港股通科技ETF-景顺长城", "cat": "科技 / TMT", "nav": 0.4486, "lin": 0.7, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -70.22, "from_low": 1.79, "low": 0.4407, "high": 1.5064, "low_date": "2026-10-21", "high_date": "2025-10-26", "days": 241, "trigger": 0.6538, "plan": {"20%": 0.6538, "40%": 0.867, "60%": 1.0801, "80%": 1.2933}}, {"code": "sz159568", "name": "港股创新药ETF-港股通", "cat": "医药 / 医疗", "nav": 1.0079, "lin": 1.9, "rank": 1.2, "signal": "🟢🟢 极度低估", "ret1y": -48.08, "from_low": 1.86, "low": 0.9895, "high": 1.9411, "low_date": "2026-10-21", "high_date": "2025-10-26", "days": 241, "trigger": 1.1798, "plan": {"20%": 1.1798, "40%": 1.3701, "60%": 1.5605, "80%": 1.7508}}, {"code": "sh513360", "name": "教育ETF博时", "cat": "跨境 / 商品", "nav": 0.4292, "lin": 9.2, "rank": 7.5, "signal": "🟢🟢 极度低估", "ret1y": -25.64, "from_low": 4.1, "low": 0.4123, "high": 0.5966, "low_date": "2026-06-25", "high_date": "2026-01-11", "days": 240, "trigger": 0.4492, "plan": {"20%": 0.4492, "40%": 0.486, "60%": 0.5229, "80%": 0.5597}}, {"code": "sz159892", "name": "恒生医药ETF华夏", "cat": "医药 / 医疗", "nav": 0.7378, "lin": 43.6, "rank": 25.7, "signal": "🟡 中性", "ret1y": -14.59, "from_low": 19.79, "low": 0.6159, "high": 0.8956, "low_date": "2026-06-16", "high_date": "2026-01-13", "days": 241, "trigger": 0.7837, "plan": {"20%": 0.6718, "40%": 0.7278, "60%": 0.7837, "80%": 0.8397}}, {"code": "sh513280", "name": "恒生生物科技ETF汇添富", "cat": "医药 / 医疗", "nav": 1.0436, "lin": 44.3, "rank": 27.0, "signal": "🟡 中性", "ret1y": -14.23, "from_low": 19.94, "low": 0.8701, "high": 1.2619, "low_date": "2026-06-16", "high_date": "2026-01-13", "days": 241, "trigger": 1.1052, "plan": {"20%": 0.9485, "40%": 1.0268, "60%": 1.1052, "80%": 1.1835}}, {"code": "sz159547", "name": "黄金股ETF-华夏", "cat": "跨境 / 商品", "nav": 1.212, "lin": 66.4, "rank": 51.5, "signal": "🟠 偏高", "ret1y": -1.49, "from_low": 11.12, "low": 1.0907, "high": 1.2734, "low_date": "2026-06-29", "high_date": "2025-11-11", "days": 241, "trigger": null, "plan": {"20%": 1.1272, "40%": 1.1638, "60%": 1.2003, "80%": 1.2369}}, {"code": "sh513130", "name": "恒生科技ETF-华泰柏瑞", "cat": "科技 / TMT", "nav": 0.4811, "lin": 3.3, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -41.08, "from_low": 2.43, "low": 0.4697, "high": 0.8165, "low_date": "2026-10-21", "high_date": "2025-10-26", "days": 241, "trigger": 0.5391, "plan": {"20%": 0.5391, "40%": 0.6084, "60%": 0.6778, "80%": 0.7471}}, {"code": "sh513180", "name": "恒生科技指数ETF-华夏", "cat": "科技 / TMT", "nav": 0.4872, "lin": 2.9, "rank": 0.8, "signal": "🟢🟢 极度低估", "ret1y": -41.39, "from_low": 2.12, "low": 0.4771, "high": 0.8313, "low_date": "2026-10-21", "high_date": "2025-10-26", "days": 241, "trigger": 0.5479, "plan": {"20%": 0.5479, "40%": 0.6188, "60%": 0.6896, "80%": 0.7605}}, {"code": "sz159920", "name": "恒生ETF-华夏", "cat": "跨境 / 商品", "nav": 1.3621, "lin": 4.2, "rank": 2.1, "signal": "🟢🟢 极度低估", "ret1y": -16.44, "from_low": 1.08, "low": 1.3476, "high": 1.6944, "low_date": "2026-06-25", "high_date": "2026-01-28", "days": 241, "trigger": 1.417, "plan": {"20%": 1.417, "40%": 1.4863, "60%": 1.5557, "80%": 1.625}}, {"code": "sh513050", "name": "中概互联网ETF-易方达", "cat": "跨境 / 商品", "nav": 0.9398, "lin": 0.0, "rank": 0.4, "signal": "🟢🟢 极度低估", "ret1y": -44.43, "from_low": 0.0, "low": 0.9398, "high": 1.6911, "low_date": "2026-10-21", "high_date": "2025-10-26", "days": 240, "trigger": 1.0901, "plan": {"20%": 1.0901, "40%": 1.2403, "60%": 1.3906, "80%": 1.5408}}, {"code": "sh513100", "name": "纳指ETF-国泰", "cat": "跨境 / 商品", "nav": 1.9384, "lin": 70.3, "rank": 56.2, "signal": "🟠 偏高", "ret1y": 5.98, "from_low": 22.11, "low": 1.5874, "high": 2.087, "low_date": "2026-03-29", "high_date": "2026-06-01", "days": 240, "trigger": null, "plan": {"20%": 1.6873, "40%": 1.7872, "60%": 1.8872, "80%": 1.9871}}, {"code": "sh513500", "name": "标普500ETF-博时", "cat": "跨境 / 商品", "nav": 2.4355, "lin": 84.4, "rank": 76.7, "signal": "🔴 高位", "ret1y": 5.75, "from_low": 17.37, "low": 2.0751, "high": 2.5023, "low_date": "2026-03-29", "high_date": "2026-08-12", "days": 240, "trigger": null, "plan": {"20%": 2.1605, "40%": 2.246, "60%": 2.3314, "80%": 2.4169}}, {"code": "sh513290", "name": "纳指生物科技ETF汇添富", "cat": "医药 / 医疗", "nav": 1.7015, "lin": 75.7, "rank": 88.8, "signal": "🟠 偏高", "ret1y": 24.67, "from_low": 25.59, "low": 1.3548, "high": 1.8126, "low_date": "2025-11-03", "high_date": "2026-08-18", "days": 240, "trigger": null, "plan": {"20%": 1.4464, "40%": 1.5379, "60%": 1.6295, "80%": 1.721}}, {"code": "sz159502", "name": "标普生物科技ETF嘉实", "cat": "医药 / 医疗", "nav": 1.5037, "lin": 65.6, "rank": 71.2, "signal": "🟠 偏高", "ret1y": 28.49, "from_low": 32.67, "low": 1.1334, "high": 1.6976, "low_date": "2025-11-03", "high_date": "2026-08-18", "days": 240, "trigger": null, "plan": {"20%": 1.2462, "40%": 1.3591, "60%": 1.4719, "80%": 1.5848}}, {"code": "sh513520", "name": "日经225ETF-华夏", "cat": "跨境 / 商品", "nav": 2.0965, "lin": 57.4, "rank": 56.4, "signal": "🟡 中性", "ret1y": 14.93, "from_low": 22.48, "low": 1.7117, "high": 2.3822, "low_date": "2025-11-24", "high_date": "2026-06-24", "days": 241, "trigger": 2.114, "plan": {"20%": 1.8458, "40%": 1.9799, "60%": 2.114, "80%": 2.2481}}, {"code": "sh513030", "name": "德国DAXETF-华安", "cat": "跨境 / 商品", "nav": 1.7398, "lin": 37.5, "rank": 12.5, "signal": "🟢 低估", "ret1y": -6.26, "from_low": 6.27, "low": 1.6371, "high": 1.9112, "low_date": "2026-03-26", "high_date": "2026-01-12", "days": 240, "trigger": 1.7467, "plan": {"20%": 1.6919, "40%": 1.7467, "60%": 1.8016, "80%": 1.8564}}, {"code": "sh518880", "name": "黄金ETF-华安", "cat": "跨境 / 商品", "nav": 8.2125, "lin": 0.0, "rank": 0.4, "signal": "🟢🟢 极度低估", "ret1y": -7.77, "from_low": 0.0, "low": 8.2125, "high": 11.8713, "low_date": "2026-10-22", "high_date": "2026-01-28", "days": 241, "trigger": 8.9443, "plan": {"20%": 8.9443, "40%": 9.676, "60%": 10.4078, "80%": 11.1395}}, {"code": "sz159937", "name": "黄金ETF-博时", "cat": "跨境 / 商品", "nav": 8.1934, "lin": 0.0, "rank": 0.4, "signal": "🟢🟢 极度低估", "ret1y": -7.8, "from_low": 0.0, "low": 8.1934, "high": 11.8435, "low_date": "2026-10-22", "high_date": "2026-01-28", "days": 241, "trigger": 8.9234, "plan": {"20%": 8.9234, "40%": 9.6534, "60%": 10.3835, "80%": 11.1135}}, {"code": "sh511360", "name": "短融ETF-海富通", "cat": "跨境 / 商品", "nav": 114.0997, "lin": 100.0, "rank": 100.0, "signal": "🔴 高位", "ret1y": 1.4, "from_low": 1.4, "low": 112.5278, "high": 114.0997, "low_date": "2025-10-26", "high_date": "2026-10-22", "days": 241, "trigger": null, "plan": {"20%": 112.8422, "40%": 113.1566, "60%": 113.4709, "80%": 113.7853}}];
+const UPDATED = "2026-10-25 14:49:13";
+const SIG_COLOR = {
+    "🟢🟢 极度低估": "#198754",
+    "🟢 低估": "#43a047",
+    "🟡 中性": "#f59f00",
+    "🟠 偏高": "#e8590c",
+    "🔴 高位": "#dc3545"
+};
+const PALETTE = ["#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3", "#937860", "#4E79A7"];
+
+const pct = v => v.toFixed(1) + "%";
+const signPct = v => (v >= 0 ? "+" : "") + v.toFixed(2) + "%";
+
+const COLUMNS = [
+    { field: "name", label: "基金" },
+    { field: "cat", label: "分类" },
+    { field: "code", label: "代码" },
+    { field: "nav", label: "当前净值", align: "right", fmt: v => v.toFixed(4) },
+    { field: "lin", label: "线性分位", align: "right", fmt: pct, cls: v => v < 40 ? "neg" : (v >= 80 ? "pos" : "") },
+    { field: "rank", label: "排名分位", align: "right", fmt: pct },
+    { field: "signal", label: "信号", fmt: (v, row) => '<span class="sig" style="background:' + (SIG_COLOR[row.signal] || "#6c757d") + '">' + v + "</span>" },
+    { field: "ret1y", label: "1年涨跌", align: "right", fmt: signPct, cls: v => v >= 0 ? "pos" : "neg" },
+    { field: "from_low", label: "距低点", align: "right", fmt: signPct, cls: v => v >= 0 ? "pos" : "neg" },
+    { field: "range", label: "近一年区间", sort: r => r.low, fmt: (v, r) => r.low.toFixed(4) + " ~ " + r.high.toFixed(4) },
+    { field: "trigger", label: "触发买入价", align: "right", sort: r => r.trigger == null ? 1e9 : r.trigger, fmt: v => v == null ? '<span class="muted">观望</span>' : v.toFixed(4) }
+];
+
+class Dashboard {
+    constructor(data) {
+        this.raw = data;
+        this.filtered = data.slice();
+        this.sortField = "lin";
+        this.sortDir = "asc";
+        this.charts = {};
+        this.init();
+    }
+
+    init() {
+        this.setupFilters();
+        this.renderKPIs();
+        this.renderCharts();
+        this.renderTable();
+
+        const help = (id) => { document.getElementById(id).addEventListener("change", () => this.applyFilters()); document.getElementById(id).addEventListener("input", () => this.applyFilters()); };
+        help("f-cat"); help("f-signal"); help("f-q"); help("f-buy");
+    }
+
+    setupFilters() {
+        const cats = [...new Set(this.raw.map(d => d.cat))].sort();
+        const sigs = [...new Set(this.raw.map(d => d.signal))];
+        const fill = (id, values) => {
+            const el = document.getElementById(id);
+            values.forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v; opt.textContent = v;
+                el.appendChild(opt);
+            });
+        };
+        fill("f-cat", cats);
+        fill("f-signal", sigs);
+    }
+
+    applyFilters() {
+        const cat = document.getElementById("f-cat").value;
+        const sig = document.getElementById("f-signal").value;
+        const q = document.getElementById("f-q").value.trim().toLowerCase();
+        const buyOnly = document.getElementById("f-buy").checked;
+
+        this.filtered = this.raw.filter(d => {
+            if (cat !== "all" && d.cat !== cat) return false;
+            if (sig !== "all" && d.signal !== sig) return false;
+            if (buyOnly && !(d.lin < 60)) return false;
+            if (q && !(d.name.toLowerCase().includes(q) || d.code.includes(q))) return false;
+            return true;
+        });
+        this.renderKPIs();
+        this.updateCharts();
+        this.renderTable();
+    }
+
+    renderKPIs() {
+        const d = this.filtered;
+        const nLow = d.filter(x => x.lin < 40).length;
+        const nBuy = d.filter(x => x.lin < 60).length;
+        const nHigh = d.filter(x => x.lin >= 80).length;
+        const avg = d.length ? d.reduce((s, x) => s + x.lin, 0) / d.length : 0;
+        const maxR = d.reduce((a, x) => (a === null || x.lin > a.lin ? x : a), null);
+        const minR = d.reduce((a, x) => (a === null || x.lin < a.lin ? x : a), null);
+        const card = (label, value, sub, cls) =>
+            '<div class="kpi-card"><div class="kpi-label">' + label + '</div><div class="kpi-value ' + (cls || "") + '">' + value + '</div><div class="kpi-sub">' + sub + '</div></div>';
+
+        document.getElementById("kpi-row").innerHTML =
+            card("监控标的", d.length, "筛选后数量 / 全池 " + this.raw.length) +
+            card("低估区（&lt;40%）", nLow,
+                minR ? "最低 " + minR.lin.toFixed(1) + "%：" + minR.name.slice(0, 12) : "无数据",
+                nLow ? "neg" : "") +
+            card("可关注（&lt;60%）", nBuy,
+                "占比 " + (d.length ? (nBuy / d.length * 100).toFixed(0) : 0) + "%，含中性区可小仓") +
+            card("高位区（≥80%）", nHigh,
+                nHigh ? "建议观望不追高" : (maxR ? "暂无，最高 " + maxR.lin.toFixed(1) + "%：" + maxR.name.slice(0, 10) : "无数据"),
+                nHigh ? "pos" : "") +
+            card("平均线性分位", avg.toFixed(1) + "%", "越低整体越便宜");
+    }
+
+    renderCharts() {
+        Chart.defaults.animation = false;
+        Chart.defaults.font.size = 11;
+
+        this.charts.signal = new Chart(document.getElementById("chart-signal"), {
+            type: "doughnut",
+            data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderColor: "#fff", borderWidth: 2 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: "58%",
+                plugins: {
+                    legend: { position: "right", labels: { usePointStyle: true, padding: 12 } },
+                    tooltip: {
+                        callbacks: {
+                            label: c => {
+                                const total = c.dataset.data.reduce((a, b) => a + b, 0);
+                                return c.label + ": " + c.parsed + " 只 (" + (c.parsed / total * 100).toFixed(1) + "%)";
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        this.charts.top = new Chart(document.getElementById("chart-top"), {
+            type: "bar",
+            data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 4 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, indexAxis: "y",
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => "距高点 " + c.parsed.x.toFixed(1) + "%（越短/越接近右端跌幅越小）" } } },
+                scales: {
+                    x: { beginAtZero: false, max: 0, title: { display: true, text: "距一年高点 %" } },
+                    y: { ticks: { autoSkip: false } }
+                }
+            }
+        });
+
+        this.charts.scatter = new Chart(document.getElementById("chart-scatter"), {
+            type: "scatter",
+            data: { datasets: [{ data: [], backgroundColor: [], pointRadius: 4 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: c => {
+                                const r = c.raw.row;
+                                return r.name + " | 分位 " + r.lin.toFixed(1) + "% | 距低点 " + signPct(r.from_low) + " | 现价 " + r.nav.toFixed(4);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { beginAtZero: true, max: 100, title: { display: true, text: "线性分位 %" } },
+                    y: { title: { display: true, text: "距低点 %" } }
+                }
+            }
+        });
+
+        this.updateCharts();
+    }
+
+    updateCharts() {
+        const d = this.filtered;
+        const sigCount = {};
+        d.forEach(x => { sigCount[x.signal] = (sigCount[x.signal] || 0) + 1; });
+        const sig = this.charts.signal;
+        sig.data.labels = Object.keys(sigCount);
+        sig.data.datasets[0].data = Object.values(sigCount);
+        sig.data.datasets[0].backgroundColor = Object.keys(sigCount).map(s => SIG_COLOR[s] || "#6c757d");
+        sig.update("none");
+
+        // 分位为 0 的标的会有很多并列（都处于一年新低），条形长度全为 0，
+        // 所以这里改用「距一年高点跌幅」排序，永远能看出差别
+        const top = d.map(r => ({ r: r, drop: (r.nav / r.high - 1) * 100 }))
+            .sort((a, b) => a.drop - b.drop)
+            .slice(0, 12);
+        const bar = this.charts.top;
+        bar.data.labels = top.map(x => x.r.name.length > 16 ? x.r.name.slice(0, 16) + "…" : x.r.name);
+        bar.data.datasets[0].data = top.map(x => +x.drop.toFixed(1));
+        bar.data.datasets[0].backgroundColor = top.map(x => SIG_COLOR[x.r.signal] || "#6c757d");
+        bar.update("none");
+
+        const sc = this.charts.scatter;
+        sc.data.datasets[0].data = d.map(r => ({ x: +r.lin.toFixed(1), y: +r.from_low.toFixed(1), row: r }));
+        sc.data.datasets[0].backgroundColor = d.map(r => (SIG_COLOR[r.signal] || "#6c757d") + "CC");
+        sc.update("none");
+    }
+
+    sortedRows() {
+        const col = COLUMNS.find(c => c.field === this.sortField) || COLUMNS[4];
+        const val = r => (col.sort ? col.sort(r) : (r[col.field] == null ? "" : r[col.field]));
+        return this.filtered.slice().sort((a, b) => {
+            const va = val(a), vb = val(b);
+            const cmp = va < vb ? -1 : (va > vb ? 1 : 0);
+            return this.sortDir === "asc" ? cmp : -cmp;
+        });
+    }
+
+    renderTable() {
+        const rows = this.sortedRows();
+        let html = '<table class="data-table"><thead><tr>';
+        COLUMNS.forEach(c => {
+            const arrow = this.sortField === c.field ? (this.sortDir === "asc" ? " ▲" : " ▼") : "";
+            const al = c.align === "right" ? ' style="text-align:right"' : "";
+            html += '<th onclick="dashboard.sortBy(\'' + c.field + '\')"' + al + '>' + c.label + arrow + '</th>';
+        });
+        html += "</tr></thead><tbody>";
+        rows.forEach(r => {
+            html += '<tr title="' + r.name + "（" + r.code + "） 网格：" +
+                Object.keys(r.plan).map(k => k + "=" + r.plan[k].toFixed(4)).join("  ") +
+                " | 低点 " + r.low_date + " 高点 " + r.high_date + '">';
+            COLUMNS.forEach(c => {
+                const raw = c.field === "range" ? "" : r[c.field];
+                const txt = c.fmt ? c.fmt(raw, r) : raw;
+                const cls = c.cls && c.field !== "signal" ? c.cls(r[c.field]) : "";
+                const al = c.align === "right" ? ' style="text-align:right"' : "";
+                html += '<td class="' + cls + '"' + al + ">" + txt + "</td>";
+            });
+            html += "</tr>";
+        });
+        html += "</tbody></table>";
+        document.getElementById("table-container").innerHTML = html;
+        document.getElementById("row-count").textContent = "共 " + rows.length + " 条（全池 " + this.raw.length + " 只）";
+    }
+
+    sortBy(field) {
+        if (this.sortField === field) {
+            this.sortDir = this.sortDir === "asc" ? "desc" : "asc";
+        } else {
+            this.sortField = field;
+            this.sortDir = field === "name" || field === "cat" || field === "code" ? "asc" : "asc";
+        }
+        this.renderTable();
+    }
+}
+
+const dashboard = new Dashboard(DATA);
+</script>
+</body>
+</html>
