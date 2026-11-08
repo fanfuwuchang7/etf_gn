@@ -35,11 +35,11 @@ jobs:
       - name: Generate HTML
         run: python generate.py
 
-      # 5. 提交并推送变更（含 data/ 下累计的净值历史，供下次运行增量合并）
+      # 5. 提交并推送变更
       - name: Commit and Push
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add docs/index.html data/
-          git commit -m "chore: update dashboard + history [skip ci]" || exit 0
+          git add docs/index.html
+          git commit -m "chore: update QDII dashboard [skip ci]" || exit 0
           git push
