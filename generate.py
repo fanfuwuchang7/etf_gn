@@ -15,7 +15,6 @@ from datetime import datetime, timedelta
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_FILE = os.path.join(BASE_DIR, "docs", "index.html")
-DATA_DIR = os.path.join(BASE_DIR, "data")   # 历史净值落盘目录（每日增量累计）
 
 # ================== 你只改这里 ==================
 # 格式：("代码", "名称")
@@ -254,30 +253,6 @@ BUY_TIERS = [
 
 
 # ---------------- 数据接口 ----------------
-# ---------------- 本地历史落盘 ----------------
-def history_path(code):
-    return os.path.join(DATA_DIR, f"{code}.json")
-
-
-def load_history(code):
-    """读本地累计历史：[("2024-01-02", 1.234), ...]"""
-    p = history_path(code)
-    if not os.path.exists(p):
-        return []
-    try:
-        with open(p, "r", encoding="utf-8") as f:
-            return sorted((d, float(v)) for d, v in json.load(f))
-    except Exception:
-        return []
-
-
-def save_history(code, series):
-    """合并去重后的历史写回本地（日期升序）"""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(history_path(code), "w", encoding="utf-8") as f:
-        json.dump(sorted(set(series)), f, ensure_ascii=False)
-
-
 def _pingzhong(code):
     url = f"http://fund.eastmoney.com/pingzhongdata/{code}.js"
     r = requests.get(url, headers=HEADERS, timeout=10)
@@ -293,7 +268,7 @@ def _pingzhong(code):
     return out
 
 
-def _lsjz(code, days=365 * 3):
+def _lsjz(code, days=365):
     end = datetime.today()
     start = end - timedelta(days=int(days * 1.5))
     out = []
@@ -318,50 +293,19 @@ def _lsjz(code, days=365 * 3):
 
 
 def load_series(code):
-    """
-    拉取 + 落盘累计：
-    1. 先读本地 data/{code}.json；
-    2. 远程优先 pingzhong（全量），失败则 lsjz —— 本地 7 天内已更新过就只增量拉
-       最近 30 天，否则全量拉 3 年；
-    3. 远程与本地合并去重后写回，下次运行在本地基础上继续累计；
-    4. 远程全挂但本地有历史时，直接用本地数据兜底。
-    """
-    local = load_history(code)
-    fresh = False
-    if local:
-        try:
-            last_dt = datetime.strptime(local[-1][0], "%Y-%m-%d")
-            fresh = (datetime.today() - last_dt).days <= 7
-        except ValueError:
-            pass
-
-    remote, src = [], ""
     try:
-        remote = _pingzhong(code)
-        src = "pingzhong"
-        if not remote:
-            raise RuntimeError("空序列")
+        rows = _pingzhong(code)
+        if rows:
+            return rows, "pingzhong"
     except Exception:
-        try:
-            days = 30 if (local and fresh) else 365 * 3
-            remote = _lsjz(code, days=days)
-            src = "lsjz"
-        except Exception:
-            remote, src = [], ""
-
-    merged = sorted(set(local) | set(remote))
-    if merged:
-        save_history(code, merged)
-        if not remote and local:
-            return merged, "local(远程失败,用本地兜底)"
-        return merged, src
-    raise RuntimeError("无数据（远程拉取失败且本地无历史）")
+        pass
+    return _lsjz(code), "lsjz"
 
 
 # ---------------- 策略计算 ----------------
 def analyze(series):
-    cutoff = (datetime.today() - timedelta(days=365 * 3)).strftime("%Y-%m-%d")
-    recent = [(d, v) for d, v in series if d >= cutoff] or series[-750:]
+    cutoff = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
+    recent = [(d, v) for d, v in series if d >= cutoff] or series[-250:]
     vals = [v for _, v in recent]
     low, high = min(vals), max(vals)
     cur = vals[-1]
@@ -509,7 +453,7 @@ body {
     <header class="dashboard-header">
         <div>
             <h1>国内 ETF / 基金 低位网格监控</h1>
-            <div class="sub">数据源：天天基金（近三年净值区间） | 更新于 __UPDATED__</div>
+            <div class="sub">数据源：天天基金（近一年净值区间） | 更新于 __UPDATED__</div>
         </div>
         <div class="filters">
             <div class="filter-group">
@@ -537,7 +481,7 @@ body {
             <div class="chart-box"><canvas id="chart-signal"></canvas></div>
         </div>
         <div class="chart-container">
-            <h3>距三年高点跌幅 TOP 12（跌得越多越便宜）</h3>
+            <h3>距一年高点跌幅 TOP 12（跌得越多越便宜）</h3>
             <div class="chart-box"><canvas id="chart-top"></canvas></div>
         </div>
         <div class="chart-container">
@@ -556,7 +500,7 @@ body {
 
     <footer class="dashboard-footer">
         <span>生成时间：__UPDATED__</span>
-        <span>线性分位 = 当前净值在近三年高/低区间中的相对位置，越低越接近底部；触发买入价为下一档网格线价格。仅供参考，不构成投资建议。</span>
+        <span>线性分位 = 当前净值在近一年高/低区间中的相对位置，越低越接近底部；触发买入价为下一档网格线价格。仅供参考，不构成投资建议。</span>
     </footer>
 </div>
 
@@ -583,9 +527,9 @@ const COLUMNS = [
     { field: "lin", label: "线性分位", align: "right", fmt: pct, cls: v => v < 40 ? "neg" : (v >= 80 ? "pos" : "") },
     { field: "rank", label: "排名分位", align: "right", fmt: pct },
     { field: "signal", label: "信号", fmt: (v, row) => '<span class="sig" style="background:' + (SIG_COLOR[row.signal] || "#6c757d") + '">' + v + "</span>" },
-    { field: "ret1y", label: "3年涨跌", align: "right", fmt: signPct, cls: v => v >= 0 ? "pos" : "neg" },
+    { field: "ret1y", label: "1年涨跌", align: "right", fmt: signPct, cls: v => v >= 0 ? "pos" : "neg" },
     { field: "from_low", label: "距低点", align: "right", fmt: signPct, cls: v => v >= 0 ? "pos" : "neg" },
-    { field: "range", label: "近三年区间", sort: r => r.low, fmt: (v, r) => r.low.toFixed(4) + " ~ " + r.high.toFixed(4) },
+    { field: "range", label: "近一年区间", sort: r => r.low, fmt: (v, r) => r.low.toFixed(4) + " ~ " + r.high.toFixed(4) },
     { field: "trigger", label: "触发买入价", align: "right", sort: r => r.trigger == null ? 1e9 : r.trigger, fmt: v => v == null ? '<span class="muted">观望</span>' : v.toFixed(4) }
 ];
 
@@ -694,9 +638,9 @@ class Dashboard {
             data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderRadius: 4 }] },
             options: {
                 responsive: true, maintainAspectRatio: false, indexAxis: "y",
-                plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => "距高点 " + c.parsed.x.toFixed(1) + "%（越短/越接近右端跌幅越小）" } } }, // 距三年高点
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => "距高点 " + c.parsed.x.toFixed(1) + "%（越短/越接近右端跌幅越小）" } } },
                 scales: {
-                    x: { beginAtZero: false, max: 0, title: { display: true, text: "距三年高点 %" } },
+                    x: { beginAtZero: false, max: 0, title: { display: true, text: "距一年高点 %" } },
                     y: { ticks: { autoSkip: false } }
                 }
             }
@@ -738,8 +682,8 @@ class Dashboard {
         sig.data.datasets[0].backgroundColor = Object.keys(sigCount).map(s => SIG_COLOR[s] || "#6c757d");
         sig.update("none");
 
-        // 分位为 0 的标的会有很多并列（都处于三年新低），条形长度全为 0，
-        // 所以这里改用「距三年高点跌幅」排序，永远能看出差别
+        // 分位为 0 的标的会有很多并列（都处于一年新低），条形长度全为 0，
+        // 所以这里改用「距一年高点跌幅」排序，永远能看出差别
         const top = d.map(r => ({ r: r, drop: (r.nav / r.high - 1) * 100 }))
             .sort((a, b) => a.drop - b.drop)
             .slice(0, 12);
@@ -878,7 +822,7 @@ def _email_body(rows):
     <tbody>{rows_html}</tbody>
   </table>
   <p style="margin-top:14px;color:#999;font-size:12px">
-    线性分位 = 当前净值在近三年高/低区间的位置，越低越接近底部；触发买入价 = 下一档网格线价格。
+    线性分位 = 当前净值在近一年高/低区间的位置，越低越接近底部；触发买入价 = 下一档网格线价格。
     仅供参考，不构成投资建议。</p>
 </div>"""
 
@@ -955,7 +899,7 @@ def main():
     print("\n" + line)
     print(pad("基金", 20) + pad("代码", 10) + pad("当前净值", 10, ">")
           + pad("线性", 7, ">") + pad("排名", 7, ">") + "  "
-          + pad("信号", 14) + pad("3年涨跌", 9, ">") + pad("距低点", 9, ">"))
+          + pad("信号", 14) + pad("1年涨跌", 9, ">") + pad("距低点", 9, ">"))
     print("-" * 86)
     for r in rows:
         print(pad(r["name"], 20) + pad(r["code"], 10)
